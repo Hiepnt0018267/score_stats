@@ -5,7 +5,9 @@ class MatchResponse {
 
   factory MatchResponse.fromJson(Map<String, dynamic> json) {
     return MatchResponse(
-      events: (json['events'] as List).map((e) => MatchEvent.fromJson(e)).toList(),
+      events: json['events'] != null
+          ? (json['events'] as List).map((i) => MatchEvent.fromJson(i)).toList()
+          : [],
     );
   }
 }

@@ -7,12 +7,30 @@ import '../models/match_detail_model.dart';
 import 'user_session.dart';
 
 class ApiService {
-  final Dio _dio = Dio();
+  // ✅ VIP PASS: Bỏ qua trang cảnh báo của Ngrok & Định dạng JSON
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 60),
+    receiveTimeout: const Duration(seconds: 60),
+    headers: {
+      "ngrok-skip-browser-warning": "true",
+      "Accept": "application/json",
+    },
+  ));
 
-  // --- BASE URL ---
-  // Trỏ về Backend Spring Boot của bạn để tránh lỗi 429
-  final String _sofaProxy = 'http://10.0.2.2:8080/api/sofascore';
-  final String _myBackend = 'http://10.0.2.2:8080/api';
+  // ==========================================================
+  // ⚙️ CÔNG TẮC CHUYỂN ĐỔI MÔI TRƯỜNG
+  // - false: Chạy Máy ảo (10.0.2.2)
+  // - true: Chạy Điện thoại thật (Ngrok)
+  // ==========================================================
+  static const bool isProduction = true;
+
+  final String _sofaProxy = isProduction
+      ? 'https://untreated-countdown-repulsive.ngrok-free.dev/api/sofascore'
+      : 'http://10.0.2.2:8080/api/sofascore';
+
+  final String _myBackend = isProduction
+      ? 'https://untreated-countdown-repulsive.ngrok-free.dev/api'
+      : 'http://10.0.2.2:8080/api';
 
   // ==========================================================
   // CÁC HÀM LẤY DỮ LIỆU BÓNG ĐÁ (QUA PROXY SPRING BOOT)
@@ -22,10 +40,20 @@ class ApiService {
   Future<List<MatchEvent>> fetchPremierLeagueMatches() async {
     try {
       final response = await _dio.get('$_sofaProxy/league/17/matches');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
-      return MatchResponse.fromJson(data).events;
-    } catch (e) {
-      throw Exception('Khong the tai lich thi dau');
+      if (response.data == null || response.data
+          .toString()
+          .isEmpty) return [];
+
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+      return MatchResponse
+          .fromJson(data)
+          .events;
+    } catch (e, stacktrace) {
+      print('❌ LỖI LỊCH THI ĐẤU: $e');
+      print('🔍 DẤU VẾT: $stacktrace');
+      return [];
     }
   }
 
@@ -33,42 +61,90 @@ class ApiService {
   Future<List<StandingRow>> fetchStandings() async {
     try {
       final response = await _dio.get('$_sofaProxy/league/17/standings');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
-      return StandingResponse.fromJson(data).rows;
+      if (response.data == null || response.data
+          .toString()
+          .isEmpty) return [];
+
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+      return StandingResponse
+          .fromJson(data)
+          .rows;
     } catch (e) {
-      throw Exception('Khong the tai Bang xep hang');
+      print('❌ LỖI BẢNG XẾP HẠNG: $e');
+      return [];
     }
   }
 
+  // 3. Lấy Vua phá lưới
   Future<List<PlayerStats>> fetchTopScorers() async {
     try {
       final response = await _dio.get('$_sofaProxy/league/17/top-scorers');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.data == null || response.data
+          .toString()
+          .isEmpty) return [];
 
-      // API /statistics trả về mảng trong mục 'results'
-      if (data['results'] != null) {
-        print('🔍 ITEM MẪU: ${data['results'][0]}');
-        return (data['results'] as List).map((item) => PlayerStats.fromJson(item)).toList();
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+
+      List<dynamic> items = [];
+      if (data is Map<String, dynamic>) {
+        if (data.containsKey('results') && data['results'] != null) {
+          items = data['results'] as List;
+        } else
+        if (data.containsKey('topPlayers') && data['topPlayers'] != null) {
+          items = data['topPlayers'] as List;
+        } else
+        if (data.containsKey('statistics') && data['statistics'] != null) {
+          items = data['statistics'] as List;
+        }
       }
-      return [];
+
+      if (items.isNotEmpty) {
+        return items.map((item) => PlayerStats.fromJson(item)).toList();
+      } else {
+        return [];
+      }
     } catch (e) {
-      print('❌ Lỗi Vua phá lưới: $e');
+      print('❌ LỖI VUA PHÁ LƯỚI: $e');
       return [];
     }
   }
 
+  // 4. Lấy Vua kiến tạo
   Future<List<PlayerStats>> fetchTopAssists() async {
     try {
       final response = await _dio.get('$_sofaProxy/league/17/top-assists');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.data == null || response.data
+          .toString()
+          .isEmpty) return [];
 
-      if (data['results'] != null) {
-        print('🔍 ITEM MẪU: ${data['results'][0]}');
-        return (data['results'] as List).map((item) => PlayerStats.fromJson(item)).toList();
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+
+      List<dynamic> items = [];
+      if (data is Map<String, dynamic>) {
+        if (data.containsKey('results') && data['results'] != null) {
+          items = data['results'] as List;
+        } else
+        if (data.containsKey('topPlayers') && data['topPlayers'] != null) {
+          items = data['topPlayers'] as List;
+        } else
+        if (data.containsKey('statistics') && data['statistics'] != null) {
+          items = data['statistics'] as List;
+        }
       }
-      return [];
+
+      if (items.isNotEmpty) {
+        return items.map((item) => PlayerStats.fromJson(item)).toList();
+      } else {
+        return [];
+      }
     } catch (e) {
-      print('❌ Lỗi Vua kiến tạo: $e');
+      print('❌ LỖI VUA KIẾN TẠO: $e');
       return [];
     }
   }
@@ -77,8 +153,13 @@ class ApiService {
   Future<List<MatchStatItem>> fetchMatchStatistics(int matchId) async {
     try {
       final response = await _dio.get('$_sofaProxy/match/$matchId/statistics');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
-      return MatchStatisticsResponse.fromJson(data).statItems;
+      if (response.data == null) return [];
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+      return MatchStatisticsResponse
+          .fromJson(data)
+          .statItems;
     } catch (e) {
       return [];
     }
@@ -88,19 +169,28 @@ class ApiService {
   Future<LineupResponse> fetchMatchLineups(int matchId) async {
     try {
       final response = await _dio.get('$_sofaProxy/match/$matchId/lineups');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.data == null)
+        return LineupResponse(homePlayers: [], awayPlayers: []);
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
       return LineupResponse.fromJson(data);
     } catch (e) {
       return LineupResponse(homePlayers: [], awayPlayers: []);
     }
   }
 
-  // 7. Lấy lịch thi đấu của 1 đội bóng (Đã đá & Sắp đá)
+  // 7. Lấy lịch thi đấu của 1 đội bóng
   Future<List<MatchEvent>> fetchTeamMatches(int teamId, String type) async {
     try {
       final response = await _dio.get('$_sofaProxy/team/$teamId/events/$type');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
-      return MatchResponse.fromJson(data).events;
+      if (response.data == null) return [];
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
+      return MatchResponse
+          .fromJson(data)
+          .events;
     } catch (e) {
       return [];
     }
@@ -113,7 +203,10 @@ class ApiService {
         '$_sofaProxy/search',
         queryParameters: {'q': query},
       );
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.data == null) return [];
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
 
       if (data['results'] != null) {
         final results = data['results'] as List;
@@ -133,7 +226,10 @@ class ApiService {
     if (playerId == 0) return null;
     try {
       final response = await _dio.get('$_sofaProxy/player/$playerId');
-      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      if (response.data == null) return null;
+      final data = response.data is String
+          ? jsonDecode(response.data)
+          : response.data;
 
       if (data != null && data['player'] != null) {
         return data['player'];
@@ -148,7 +244,6 @@ class ApiService {
   // CÁC HÀM TƯƠNG TÁC VỚI DATABASE CỦA BẠN (MYSQL)
   // ==========================================================
 
-  // Đồng bộ User với Backend
   Future<void> syncUserToBackend(String uid, String email, String name) async {
     try {
       final response = await _dio.post(
@@ -159,12 +254,12 @@ class ApiService {
         UserSession.updateUserId(response.data['id']);
       }
     } catch (e) {
-      // Bỏ qua log lỗi
+      print('❌ LỖI ĐỒNG BỘ USER: $e');
     }
   }
 
-  // Theo dõi đội bóng
-  Future<bool> followTeam(int userId, int apiTeamId, String teamName, String logoUrl) async {
+  Future<bool> followTeam(int userId, int apiTeamId, String teamName,
+      String logoUrl) async {
     try {
       final response = await _dio.post(
         '$_myBackend/teams/follow',
@@ -175,23 +270,27 @@ class ApiService {
           "logoUrl": logoUrl
         },
       );
-      return response.statusCode == 200;
+      // Chấp nhận cả 200 (OK) và 201 (Created)
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
+      print('❌ LỖI FOLLOW ĐỘI BÓNG: $e');
       return false;
     }
   }
 
-  // Lấy danh sách đội bóng đã Follow
   Future<List<dynamic>> getFollowedTeams(int userId) async {
     try {
       final response = await _dio.get('$_myBackend/teams/user/$userId');
-      return response.statusCode == 200 ? response.data : [];
+      if (response.statusCode == 200 && response.data != null) {
+        return response.data as List<dynamic>;
+      }
+      return [];
     } catch (e) {
+      print('❌ LỖI TẢI DANH SÁCH ĐỘI: $e');
       return [];
     }
   }
 
-  // Bỏ theo dõi đội bóng
   Future<bool> unfollowTeam(int userId, int apiTeamId) async {
     try {
       final response = await _dio.post(
@@ -201,8 +300,10 @@ class ApiService {
           "apiId": apiTeamId.toString(),
         },
       );
-      return response.statusCode == 200;
+      // Chấp nhận cả 200 (OK) và 204 (No Content)
+      return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
+      print('❌ LỖI HỦY FOLLOW: $e');
       return false;
     }
   }

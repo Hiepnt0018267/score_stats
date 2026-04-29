@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/match_model.dart';
 import '../screens/match_detail_screen.dart';
+import '../services/api_service.dart'; // Import để lấy Link động
 
 class MatchCard extends StatelessWidget {
-  final MatchEvent match; // Nhận dữ liệu của 1 trận đấu từ bên ngoài truyền vào
+  final MatchEvent match;
 
   const MatchCard({super.key, required this.match});
 
@@ -14,15 +15,18 @@ class MatchCard extends StatelessWidget {
     final homeScore = match.homeScore?.display?.toString() ?? '?';
     final awayScore = match.awayScore?.display?.toString() ?? '?';
 
+    // ✅ TỰ ĐỘNG LẤY LINK NGROK HAY MÁY ẢO DỰA VÀO CÔNG TẮC BÊN API_SERVICE
+    final String imageHost = ApiService.isProduction
+        ? 'https://untreated-countdown-repulsive.ngrok-free.dev'
+        : 'http://10.0.2.2:8080';
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       elevation: 2,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      // THÊM INKWELL Ở ĐÂY: Tạo hiệu ứng bấm và chuyển trang
       child: InkWell(
-        borderRadius: BorderRadius.circular(12), // Bo góc hiệu ứng gợn sóng cho khớp với viền Card
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
-          // Lệnh chuyển sang màn hình Chi tiết trận đấu
           Navigator.push(
             context,
             MaterialPageRoute(
@@ -41,7 +45,8 @@ class MatchCard extends StatelessWidget {
                 child: Column(
                   children: [
                     CachedNetworkImage(
-                      imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${match.homeTeam.id}',
+                      imageUrl: '$imageHost/api/sofascore/team-logo/${match.homeTeam.id}', // Đã đổi sang Link động
+                      httpHeaders: const {"ngrok-skip-browser-warning": "true"}, // ✅ THÊM THẺ VIP VƯỢT NGROK
                       width: 45, height: 45,
                       placeholder: (context, url) => const SizedBox(width: 45, height: 45, child: CircularProgressIndicator(strokeWidth: 2)),
                       errorWidget: (context, url, error) => const Icon(Icons.shield, size: 45, color: Colors.grey),
@@ -74,7 +79,8 @@ class MatchCard extends StatelessWidget {
                 child: Column(
                   children: [
                     CachedNetworkImage(
-                      imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${match.awayTeam.id}',
+                      imageUrl: '$imageHost/api/sofascore/team-logo/${match.awayTeam.id}', // Đã đổi sang Link động
+                      httpHeaders: const {"ngrok-skip-browser-warning": "true"}, // ✅ THÊM THẺ VIP VƯỢT NGROK
                       width: 45, height: 45,
                       placeholder: (context, url) => const SizedBox(width: 45, height: 45, child: CircularProgressIndicator(strokeWidth: 2)),
                       errorWidget: (context, url, error) => const Icon(Icons.shield, size: 45, color: Colors.grey),

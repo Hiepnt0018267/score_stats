@@ -17,6 +17,11 @@ class _FollowedTeamsScreenState extends State<FollowedTeamsScreen> {
   bool isLoading = true;
   List<dynamic> followedTeams = [];
 
+  // 1. CHỐT LINK ẢNH ĐỘNG (Tránh lỗi ảnh khi chạy 4G)
+  final String _imageHost = ApiService.isProduction
+      ? 'https://untreated-countdown-repulsive.ngrok-free.dev' // Link Ngrok hiện tại
+      : 'http://10.0.2.2:8080';
+
   @override
   void initState() {
     super.initState();
@@ -25,15 +30,17 @@ class _FollowedTeamsScreenState extends State<FollowedTeamsScreen> {
 
   Future<void> _loadTeams() async {
     if (UserSession.mySqlUserId == null) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
       return;
     }
 
     final teams = await _apiService.getFollowedTeams(UserSession.mySqlUserId!);
-    setState(() {
-      followedTeams = teams;
-      isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        followedTeams = teams;
+        isLoading = false;
+      });
+    }
   }
 
   Future<void> _handleUnfollow(int apiId, String teamName) async {
@@ -58,8 +65,11 @@ class _FollowedTeamsScreenState extends State<FollowedTeamsScreen> {
       bool success = await _apiService.unfollowTeam(UserSession.mySqlUserId!, apiId);
 
       if (success && mounted) {
-        _loadTeams();
+        _loadTeams(); // Load lại danh sách sau khi xóa
+        UserSession.triggerFollowUpdate(); // Báo cho các màn hình khác biết
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Đã bỏ theo dõi!'), backgroundColor: Colors.green));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ Lỗi: Không thể xóa!'), backgroundColor: Colors.red));
       }
     }
   }
@@ -84,11 +94,15 @@ class _FollowedTeamsScreenState extends State<FollowedTeamsScreen> {
         separatorBuilder: (context, index) => const Divider(),
         itemBuilder: (context, index) {
           final team = followedTeams[index];
+          final apiId = int.parse(team['apiId'].toString());
+
+          // Tạo link ảnh an toàn dựa trên môi trường (bỏ qua cái lưu trong MySQL)
+          final safeLogoUrl = '$_imageHost/api/sofascore/team-logo/$apiId';
 
           return ListTile(
             contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
             leading: CachedNetworkImage(
-              imageUrl: team['logoUrl'],
+              imageUrl: safeLogoUrl,
               width: 50,
               height: 50,
               placeholder: (context, url) => const CircularProgressIndicator(),
@@ -98,23 +112,24 @@ class _FollowedTeamsScreenState extends State<FollowedTeamsScreen> {
             trailing: IconButton(
               icon: const Icon(Icons.favorite, color: Colors.red),
               onPressed: () {
-                _handleUnfollow(int.parse(team['apiId'].toString()), team['name']);
+                _handleUnfollow(apiId, team['name']);
               },
             ),
-            // --- SỰ KIỆN BẤM VÀO ĐỂ CHUYỂN SANG MÀN HÌNH HỒ SƠ ĐỘI BÓNG ---
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => TeamProfileScreen(
-                    teamId: int.parse(team['apiId'].toString()),
+                    teamId: apiId,
                     teamName: team['name'],
-                    logoUrl: team['logoUrl'],
+                    logoUrl: safeLogoUrl,
                   ),
                 ),
-              );
+              ).then((_) {
+                // 2. LÀM MỚI DANH SÁCH: Khi ấn Back từ trang Profile, tự động tải lại
+                _loadTeams();
+              });
             },
-            // -------------------------------------------------------------
           );
         },
       ),

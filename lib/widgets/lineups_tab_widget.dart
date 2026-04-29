@@ -190,6 +190,7 @@ class _LineupsTabWidgetState extends State<LineupsTabWidget> {
                 child: ClipOval(
                   child: CachedNetworkImage(
                     imageUrl: 'http://10.0.2.2:8080/api/sofascore/player-image/${player.id}',
+                    httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                     fit: BoxFit.cover,
                     errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey, size: 20),
                   ),

@@ -158,6 +158,7 @@ class _TeamProfileScreenState extends State<TeamProfileScreen> {
                 children: [
                   CachedNetworkImage(
                     imageUrl: widget.logoUrl,
+                    httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                     width: 100,
                     height: 100,
                     placeholder: (context, url) => const CircularProgressIndicator(),

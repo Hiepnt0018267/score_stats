@@ -197,6 +197,7 @@ class _StatsTabState extends State<StatsTab> {
                 child: ClipOval(
                   child: CachedNetworkImage(
                     imageUrl: 'http://10.0.2.2:8080/api/sofascore/player-image/$playerId',
+                    httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                     fit: BoxFit.cover,
                     errorWidget: (context, url, error) => const Icon(Icons.person, color: Colors.grey),
                   ),
@@ -215,6 +216,7 @@ class _StatsTabState extends State<StatsTab> {
                     children: [
                       CachedNetworkImage(
                         imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/$teamId',
+                        httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                         width: 14, height: 14,
                         errorWidget: (context, url, error) => const Icon(Icons.shield, size: 14, color: Colors.grey),
                       ),

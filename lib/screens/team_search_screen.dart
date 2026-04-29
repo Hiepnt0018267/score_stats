@@ -16,28 +16,31 @@ class TeamSearchScreen extends StatefulWidget {
 class _TeamSearchScreenState extends State<TeamSearchScreen> {
   final ApiService _apiService = ApiService();
   final TextEditingController _searchController = TextEditingController();
-
-  // Mỏ neo giữ bàn phím không bị mất Focus
   final FocusNode _focusNode = FocusNode();
 
   List<dynamic> searchResults = [];
-  Set<int> _followedTeamIds = {}; // Danh sách ID các đội đã ghim
+  Set<int> _followedTeamIds = {};
+  Set<int> _loadingTeamIds = {}; // Quản lý hiệu ứng loading cho từng nút
+
   bool isLoading = false;
   bool hasSearched = false;
   Timer? _debounce;
+
+  // Tự động chọn link ảnh chuẩn dựa trên môi trường (Máy ảo hay Điện thoại thật)
+  final String _imageHost = ApiService.isProduction
+      ? 'https://untreated-countdown-repulsive.ngrok-free.dev'
+      : 'http://10.0.2.2:8080';
 
   @override
   void initState() {
     super.initState();
     _loadFollowedTeams();
 
-    // Bật bàn phím an toàn sau khi màn hình dựng xong
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FocusScope.of(context).requestFocus(_focusNode);
     });
   }
 
-  // Hàm kéo danh sách đội đã follow từ Spring Boot
   Future<void> _loadFollowedTeams() async {
     if (UserSession.mySqlUserId != null) {
       final teams = await _apiService.getFollowedTeams(UserSession.mySqlUserId!);
@@ -82,38 +85,49 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
     }
   }
 
-  // Hàm xử lý cả Follow và Unfollow
-  Future<void> toggleFollow(int apiTeamId, String teamName) async {
+  Future<void> toggleFollow(int apiTeamId, String teamName, String logoUrl) async {
     if (UserSession.mySqlUserId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Vui lòng đăng nhập!'), backgroundColor: Colors.red)
+          const SnackBar(content: Text('Vui lòng đăng nhập để ghim đội bóng!'), backgroundColor: Colors.red)
       );
       return;
     }
 
+    // Bật hiệu ứng loading cho nút vừa bấm
+    setState(() => _loadingTeamIds.add(apiTeamId));
+
     bool isCurrentlyFollowed = _followedTeamIds.contains(apiTeamId);
+    bool success = false;
 
     if (isCurrentlyFollowed) {
-      // 1. UNFOLLOW
-      bool success = await _apiService.unfollowTeam(UserSession.mySqlUserId!, apiTeamId);
+      // HỦY FOLLOW
+      success = await _apiService.unfollowTeam(UserSession.mySqlUserId!, apiTeamId);
       if (success && mounted) {
         setState(() => _followedTeamIds.remove(apiTeamId));
-        UserSession.triggerFollowUpdate(); // Rung chuông báo thay đổi
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Đã bỏ theo dõi $teamName'))
-        );
+        UserSession.triggerFollowUpdate();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã bỏ theo dõi')));
       }
     } else {
-      // 2. FOLLOW
-      String logoUrl = 'http://10.0.2.2:8080/api/sofascore/team-logo/$apiTeamId';
-      bool success = await _apiService.followTeam(UserSession.mySqlUserId!, apiTeamId, teamName, logoUrl);
+      // THÊM FOLLOW
+      success = await _apiService.followTeam(UserSession.mySqlUserId!, apiTeamId, teamName, logoUrl);
       if (success && mounted) {
         setState(() => _followedTeamIds.add(apiTeamId));
-        UserSession.triggerFollowUpdate(); // Rung chuông báo thay đổi
+        UserSession.triggerFollowUpdate();
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('✅ Đã ghim $teamName'), backgroundColor: Colors.green)
         );
       }
+    }
+
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lỗi máy chủ, vui lòng thử lại!'), backgroundColor: Colors.red)
+      );
+    }
+
+    // Tắt hiệu ứng loading
+    if (mounted) {
+      setState(() => _loadingTeamIds.remove(apiTeamId));
     }
   }
 
@@ -124,9 +138,9 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
       appBar: AppBar(
         title: TextField(
           controller: _searchController,
-          focusNode: _focusNode, // Gắn mỏ neo
+          focusNode: _focusNode,
           autofocus: false,
-          textInputAction: TextInputAction.search, // Nút tìm kiếm dưới bàn phím
+          textInputAction: TextInputAction.search,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
               hintText: 'Nhập tên đội bóng...',
@@ -145,7 +159,7 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
               setState(() {
                 searchResults.clear();
                 hasSearched = false;
-                _focusNode.requestFocus(); // Nhấn xóa xong giữ nguyên bàn phím
+                _focusNode.requestFocus();
               });
             },
           ),
@@ -163,33 +177,45 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
           final apiId = team['id'];
           final teamName = team['name'];
 
-          // Link proxy lấy ảnh
-          final logoUrl = 'http://10.0.2.2:8080/api/sofascore/team-logo/$apiId';
+          // Link proxy lấy ảnh ĐỘNG
+          final logoUrl = '$_imageHost/api/sofascore/team-logo/$apiId';
 
-          // Kiểm tra trạng thái Follow
           bool isFollowed = _followedTeamIds.contains(apiId);
+          bool isBtnLoading = _loadingTeamIds.contains(apiId);
 
           return Card(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: ListTile(
               leading: CachedNetworkImage(
                 imageUrl: logoUrl,
+                httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                 width: 40, height: 40,
                 errorWidget: (context, url, error) => const Icon(Icons.shield, color: Colors.grey),
               ),
               title: Text(teamName, style: const TextStyle(fontWeight: FontWeight.bold)),
 
-              // NÚT FOLLOW THÔNG MINH
-              trailing: ElevatedButton.icon(
+              trailing: ElevatedButton(
                 style: ElevatedButton.styleFrom(
                   backgroundColor: isFollowed ? Colors.grey[300] : const Color(0xFFE90052),
                   foregroundColor: isFollowed ? Colors.black87 : Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   elevation: isFollowed ? 0 : 2,
+                  minimumSize: const Size(110, 36),
                 ),
-                icon: Icon(isFollowed ? Icons.check : Icons.favorite_border, size: 16),
-                label: Text(isFollowed ? 'Đã Follow' : 'Follow'),
-                onPressed: () => toggleFollow(apiId, teamName),
+                onPressed: isBtnLoading ? null : () => toggleFollow(apiId, teamName, logoUrl),
+                child: isBtnLoading
+                    ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+                )
+                    : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(isFollowed ? Icons.check : Icons.favorite_border, size: 16),
+                    const SizedBox(width: 4),
+                    Text(isFollowed ? 'Đã Follow' : 'Follow'),
+                  ],
+                ),
               ),
               onTap: () {
                 Navigator.push(context, MaterialPageRoute(
@@ -198,7 +224,10 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
                         teamName: teamName,
                         logoUrl: logoUrl
                     )
-                ));
+                )).then((_) {
+                  // Tự động load lại trạng thái nút bấm khi quay về từ trang hồ sơ
+                  _loadFollowedTeams();
+                });
               },
             ),
           );
@@ -209,7 +238,7 @@ class _TeamSearchScreenState extends State<TeamSearchScreen> {
 
   @override
   void dispose() {
-    _focusNode.dispose(); // Hủy mỏ neo
+    _focusNode.dispose();
     _debounce?.cancel();
     _searchController.dispose();
     super.dispose();

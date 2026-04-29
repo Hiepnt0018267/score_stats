@@ -25,14 +25,11 @@ class _FixturesTabState extends State<FixturesTab> {
   void initState() {
     super.initState();
 
-    // 1. Đeo tai nghe: Lắng nghe thay đổi User ID từ bất kỳ đâu (Login/Logout)
     UserSession.userIdNotifier.addListener(_onUserChanged);
     UserSession.followChangeNotifier.addListener(_onFollowChanged);
 
-    // 2. Chạy tải dữ liệu lần đầu
     _loadData();
 
-    // 3. Mẹo nhỏ: Kiểm tra lại sau 1 giây phòng trường hợp ID đến đúng lúc đang dựng màn hình
     Future.delayed(const Duration(seconds: 1), () {
       if (mounted && UserSession.mySqlUserId != null && followedTeamIds.isEmpty) {
         _loadData();
@@ -40,47 +37,37 @@ class _FixturesTabState extends State<FixturesTab> {
     });
   }
 
-  // Hàm tự động chạy khi nhận tín hiệu từ UserSession
   void _onUserChanged() {
     if (mounted) {
-      print("FixturesTab: Nhan tin hieu doi User, dang tai lai du lieu...");
       _loadData();
     }
   }
+
   void _onFollowChanged() {
     if (mounted) {
-      print("🔔 FixturesTab: Nghe chuông Follow thay đổi, đang tải lại dữ liệu...");
       _loadData();
     }
   }
 
   @override
   void dispose() {
-    // Tháo tai nghe để tránh lỗi bộ nhớ
     UserSession.userIdNotifier.removeListener(_onUserChanged);
     UserSession.followChangeNotifier.removeListener(_onFollowChanged);
     super.dispose();
   }
 
   Future<void> _loadData() async {
-    // Đảm bảo không gọi setState nếu Widget đã bị hủy
     if (!mounted) return;
-
     setState(() => isLoading = true);
 
     try {
-      // BƯỚC 1: Luôn tải lịch thi đấu gốc
       List<MatchEvent> allMatches = await _apiService.fetchPremierLeagueMatches();
-
-      // BƯỚC 2: Kiểm tra ID người dùng hiện tại
       int? currentUserId = UserSession.mySqlUserId;
 
       if (currentUserId != null) {
-        // BƯỚC 3: Nếu đã có ID, lấy danh sách đội đã Follow từ Spring Boot
         final followedData = await _apiService.getFollowedTeams(currentUserId);
         followedTeamIds = followedData.map((t) => int.parse(t['apiId'].toString())).toSet();
 
-        // BƯỚC 4: Sắp xếp ưu tiên các trận có đội yêu thích lên đầu
         allMatches.sort((a, b) {
           bool isAFavorite = followedTeamIds.contains(a.homeTeam.id) || followedTeamIds.contains(a.awayTeam.id);
           bool isBFavorite = followedTeamIds.contains(b.homeTeam.id) || followedTeamIds.contains(b.awayTeam.id);
@@ -90,7 +77,6 @@ class _FixturesTabState extends State<FixturesTab> {
           return 0;
         });
       } else {
-        // Nếu không có ID (chưa login hoặc đăng xuất), làm sạch bộ lọc
         followedTeamIds.clear();
       }
 
@@ -118,11 +104,19 @@ class _FixturesTabState extends State<FixturesTab> {
         actions: [
           IconButton(
             icon: const Icon(Icons.search),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const TeamSearchScreen())),
+            onPressed: () {
+              // ✅ Gắn chuông báo thức: Tắt tìm kiếm là tự load lại
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TeamSearchScreen()))
+                  .then((_) => _loadData());
+            },
           ),
           IconButton(
             icon: const Icon(Icons.favorite),
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const FollowedTeamsScreen())),
+            onPressed: () {
+              // ✅ Gắn chuông báo thức: Tắt danh sách follow là tự load lại
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const FollowedTeamsScreen()))
+                  .then((_) => _loadData());
+            },
           ),
         ],
       ),
@@ -135,8 +129,8 @@ class _FixturesTabState extends State<FixturesTab> {
           children: [
             Icon(Icons.cloud_off, size: 80, color: Colors.grey[300]),
             const SizedBox(height: 16),
-            const Text('Khong co du lieu thoi gian nay', style: TextStyle(color: Colors.grey)),
-            TextButton(onPressed: _loadData, child: const Text('Thu lai'))
+            const Text('Không có dữ liệu thời gian này', style: TextStyle(color: Colors.grey)),
+            TextButton(onPressed: _loadData, child: const Text('Thử lại'))
           ],
         ),
       )
@@ -164,6 +158,7 @@ class _FixturesTabState extends State<FixturesTab> {
                       ],
                     ),
                   ),
+                // Hình ảnh được vẽ ở trong Widget này đây:
                 MatchCard(match: match),
               ],
             );

@@ -110,6 +110,7 @@ class _MatchHeaderWidgetState extends State<MatchHeaderWidget> {
               children: [
                 CachedNetworkImage(
                   imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${widget.match.homeTeam.id}',
+                  httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                   width: 60, height: 60,
                   errorWidget: (context, url, error) => const Icon(Icons.shield, size: 60, color: Colors.grey),
                 ),
@@ -149,6 +150,7 @@ class _MatchHeaderWidgetState extends State<MatchHeaderWidget> {
               children: [
                 CachedNetworkImage(
                   imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${widget.match.awayTeam.id}',
+                  httpHeaders: const {"ngrok-skip-browser-warning": "true"},
                   width: 60, height: 60,
                   errorWidget: (context, url, error) => const Icon(Icons.shield, size: 60, color: Colors.grey),
                 ),

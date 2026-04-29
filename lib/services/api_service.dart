@@ -1,106 +1,209 @@
 import 'package:dio/dio.dart';
+import 'dart:convert';
 import '../models/match_model.dart';
 import '../models/standing_model.dart';
 import '../models/top_scorer_model.dart';
 import '../models/match_detail_model.dart';
+import 'user_session.dart';
+
 class ApiService {
   final Dio _dio = Dio();
-  final String _apiKey = 'fd019d9933mshc70adffe45c288cp1728e1jsncad191f24366';
 
-  // Hàm 1: Lấy Lịch thi đấu (Cũ)
+  // --- BASE URL ---
+  // Trỏ về Backend Spring Boot của bạn để tránh lỗi 429
+  final String _sofaProxy = 'http://10.0.2.2:8080/api/sofascore';
+  final String _myBackend = 'http://10.0.2.2:8080/api';
+
+  // ==========================================================
+  // CÁC HÀM LẤY DỮ LIỆU BÓNG ĐÁ (QUA PROXY SPRING BOOT)
+  // ==========================================================
+
+  // 1. Lấy Lịch thi đấu
   Future<List<MatchEvent>> fetchPremierLeagueMatches() async {
     try {
-      final response = await _dio.get(
-        'https://sofascore.p.rapidapi.com/tournaments/get-last-matches',
-        queryParameters: {
-          'tournamentId': 17,
-          'seasonId': 76986,
-          'pageIndex': 0,
-        },
-        options: Options(
-          headers: {
-            'x-rapidapi-host': 'sofascore.p.rapidapi.com',
-            'x-rapidapi-key': _apiKey,
-          },
-        ),
-      );
-      return MatchResponse.fromJson(response.data).events;
+      final response = await _dio.get('$_sofaProxy/league/17/matches');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      return MatchResponse.fromJson(data).events;
     } catch (e) {
-      throw Exception('Không thể tải lịch thi đấu');
+      throw Exception('Khong the tai lich thi dau');
     }
   }
 
-  // Hàm 2: Lấy Bảng xếp hạng (Mới)
+  // 2. Lấy Bảng xếp hạng
   Future<List<StandingRow>> fetchStandings() async {
     try {
-      final response = await _dio.get(
-        'https://sofascore.p.rapidapi.com/tournaments/get-standings',
-        queryParameters: {
-          'tournamentId': 17,
-          'seasonId': 76986,
-          'type': 'total',
-          // Bảng xếp hạng tổng (không phải riêng sân nhà/sân khách)
-        },
-        options: Options(
-          headers: {
-            'x-rapidapi-host': 'sofascore.p.rapidapi.com',
-            'x-rapidapi-key': _apiKey,
-          },
-        ),
-      );
-      return StandingResponse.fromJson(response.data).rows;
+      final response = await _dio.get('$_sofaProxy/league/17/standings');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      return StandingResponse.fromJson(data).rows;
     } catch (e) {
-      print('Lỗi gọi mạng BXH: $e');
-      throw Exception('Không thể tải Bảng xếp hạng');
+      throw Exception('Khong the tai Bang xep hang');
     }
   }
 
   Future<List<PlayerStats>> fetchTopScorers() async {
     try {
-      final response = await _dio.get(
-        'https://sofascore.p.rapidapi.com/tournaments/get-top-players',
-        // Link mới
-        queryParameters: {'tournamentId': 17, 'seasonId': 76986},
-        options: Options(
-          headers: {
-            'x-rapidapi-host': 'sofascore.p.rapidapi.com',
-            'x-rapidapi-key': _apiKey,
-          },
-        ),
-      );
-      return TopScorerResponse.fromJson(response.data).goals;
+      final response = await _dio.get('$_sofaProxy/league/17/top-scorers');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+
+      // API /statistics trả về mảng trong mục 'results'
+      if (data['results'] != null) {
+        print('🔍 ITEM MẪU: ${data['results'][0]}');
+        return (data['results'] as List).map((item) => PlayerStats.fromJson(item)).toList();
+      }
+      return [];
     } catch (e) {
-      print('Lỗi gọi mạng Vua phá lưới: $e');
-      throw Exception('Không thể tải dữ liệu Vua phá lưới');
-    }
-  }
-  // Hàm 4: Lấy Thống kê trận đấu
-  Future<List<MatchStatItem>> fetchMatchStatistics(int matchId) async {
-    try {
-      final response = await _dio.get(
-        'https://sofascore.p.rapidapi.com/matches/get-statistics',
-        queryParameters: {'matchId': matchId},
-        options: Options(headers: {'x-rapidapi-host': 'sofascore.p.rapidapi.com', 'x-rapidapi-key': _apiKey}),
-      );
-      return MatchStatisticsResponse.fromJson(response.data).statItems;
-    } catch (e) {
-      print('Lỗi gọi Thống kê: $e');
-      return []; // Nếu lỗi (ví dụ trận chưa đá không có thống kê) thì trả về mảng rỗng
+      print('❌ Lỗi Vua phá lưới: $e');
+      return [];
     }
   }
 
-  // Hàm 5: Lấy Đội hình ra sân
+  Future<List<PlayerStats>> fetchTopAssists() async {
+    try {
+      final response = await _dio.get('$_sofaProxy/league/17/top-assists');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+
+      if (data['results'] != null) {
+        print('🔍 ITEM MẪU: ${data['results'][0]}');
+        return (data['results'] as List).map((item) => PlayerStats.fromJson(item)).toList();
+      }
+      return [];
+    } catch (e) {
+      print('❌ Lỗi Vua kiến tạo: $e');
+      return [];
+    }
+  }
+
+  // 5. Lấy Thống kê trận đấu
+  Future<List<MatchStatItem>> fetchMatchStatistics(int matchId) async {
+    try {
+      final response = await _dio.get('$_sofaProxy/match/$matchId/statistics');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      return MatchStatisticsResponse.fromJson(data).statItems;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 6. Lấy Đội hình ra sân
   Future<LineupResponse> fetchMatchLineups(int matchId) async {
     try {
-      final response = await _dio.get(
-        'https://sofascore.p.rapidapi.com/matches/get-lineups',
-        queryParameters: {'matchId': matchId},
-        options: Options(headers: {'x-rapidapi-host': 'sofascore.p.rapidapi.com', 'x-rapidapi-key': _apiKey}),
-      );
-      return LineupResponse.fromJson(response.data);
+      final response = await _dio.get('$_sofaProxy/match/$matchId/lineups');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      return LineupResponse.fromJson(data);
     } catch (e) {
-      print('Lỗi gọi Đội hình: $e');
       return LineupResponse(homePlayers: [], awayPlayers: []);
+    }
+  }
+
+  // 7. Lấy lịch thi đấu của 1 đội bóng (Đã đá & Sắp đá)
+  Future<List<MatchEvent>> fetchTeamMatches(int teamId, String type) async {
+    try {
+      final response = await _dio.get('$_sofaProxy/team/$teamId/events/$type');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+      return MatchResponse.fromJson(data).events;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 8. Tìm kiếm đội bóng
+  Future<List<dynamic>> searchTeams(String query) async {
+    try {
+      final response = await _dio.get(
+        '$_sofaProxy/search',
+        queryParameters: {'q': query},
+      );
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+
+      if (data['results'] != null) {
+        final results = data['results'] as List;
+        return results
+            .where((item) => item['type'] == 'team')
+            .map((item) => item['entity'])
+            .toList();
+      }
+      return [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 9. Lấy thông tin chi tiết Cầu thủ
+  Future<Map<String, dynamic>?> fetchPlayerInfo(int playerId) async {
+    if (playerId == 0) return null;
+    try {
+      final response = await _dio.get('$_sofaProxy/player/$playerId');
+      final data = response.data is String ? jsonDecode(response.data) : response.data;
+
+      if (data != null && data['player'] != null) {
+        return data['player'];
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ==========================================================
+  // CÁC HÀM TƯƠNG TÁC VỚI DATABASE CỦA BẠN (MYSQL)
+  // ==========================================================
+
+  // Đồng bộ User với Backend
+  Future<void> syncUserToBackend(String uid, String email, String name) async {
+    try {
+      final response = await _dio.post(
+        '$_myBackend/users/sync',
+        data: {"uid": uid, "email": email, "name": name},
+      );
+      if (response.statusCode == 200) {
+        UserSession.updateUserId(response.data['id']);
+      }
+    } catch (e) {
+      // Bỏ qua log lỗi
+    }
+  }
+
+  // Theo dõi đội bóng
+  Future<bool> followTeam(int userId, int apiTeamId, String teamName, String logoUrl) async {
+    try {
+      final response = await _dio.post(
+        '$_myBackend/teams/follow',
+        data: {
+          "userId": userId.toString(),
+          "apiId": apiTeamId.toString(),
+          "teamName": teamName,
+          "logoUrl": logoUrl
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Lấy danh sách đội bóng đã Follow
+  Future<List<dynamic>> getFollowedTeams(int userId) async {
+    try {
+      final response = await _dio.get('$_myBackend/teams/user/$userId');
+      return response.statusCode == 200 ? response.data : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // Bỏ theo dõi đội bóng
+  Future<bool> unfollowTeam(int userId, int apiTeamId) async {
+    try {
+      final response = await _dio.post(
+        '$_myBackend/teams/unfollow',
+        data: {
+          "userId": userId.toString(),
+          "apiId": apiTeamId.toString(),
+        },
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      return false;
     }
   }
 }

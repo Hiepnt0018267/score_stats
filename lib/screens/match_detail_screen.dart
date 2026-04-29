@@ -1,12 +1,22 @@
 // File: lib/screens/match_detail_screen.dart
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+
 import '../models/match_model.dart';
 import '../models/match_detail_model.dart';
 import '../services/api_service.dart';
+import '../services/user_session.dart'; // Import ví chứa ID người dùng
+import '../services/auth_service.dart';
+
+// ✅ IMPORT THÊM MAIN SCREEN ĐỂ DÙNG TÍNH NĂNG NHẢY TAB
+import 'main_screen.dart';
+
+// CÁC WIDGET GIAO DIỆN
+import '../widgets/match_header_widget.dart';
+import '../widgets/stats_tab_widget.dart';
+import '../widgets/lineups_tab_widget.dart';
 
 class MatchDetailScreen extends StatefulWidget {
-  final MatchEvent match; // Nhận dữ liệu trận đấu từ màn hình ngoài truyền vào
+  final MatchEvent match;
 
   const MatchDetailScreen({super.key, required this.match});
 
@@ -28,105 +38,113 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
 
   Future<void> _loadMatchDetails() async {
     try {
-      // Gọi song song 2 API cùng lúc cho nhanh
       final results = await Future.wait([
         _apiService.fetchMatchStatistics(widget.match.id),
         _apiService.fetchMatchLineups(widget.match.id),
       ]);
 
-      setState(() {
-        stats = results[0] as List<MatchStatItem>;
-        lineups = results[1] as LineupResponse;
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          stats = results[0] as List<MatchStatItem>;
+          lineups = results[1] as LineupResponse;
+          isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => isLoading = false);
+      if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  // ✅ HÀM FOLLOW ĐÃ ĐƯỢC CHUẨN HÓA LOGIC CHUYỂN TRANG
+  Future<void> followTeam(int placeholderUserId, int apiTeamId, String teamName, String logoUrl) async {
+    // 1. KIỂM TRA BẢO MẬT: Nếu chưa đăng nhập -> HIỆN BẢNG THÔNG BÁO VÀ CHUYỂN TRANG
+    if (UserSession.mySqlUserId == null) {
+      showDialog(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Text('Yêu cầu đăng nhập', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF3C1C5A))),
+            content: const Text('Bạn cần đăng nhập để lưu đội bóng này vào danh sách yêu thích của mình.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(), // Bấm Hủy (đóng hộp thoại)
+                child: const Text('Để sau', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3C1C5A),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  // Đóng hộp thoại thông báo
+                  Navigator.of(context).pop();
+
+                  // Xóa sạch lịch sử trang xếp chồng và nhảy về Màn hình chính ở Tab Tài khoản (số 3)
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const MainScreen(initialIndex: 3),
+                    ),
+                        (route) => false,
+                  );
+                },
+                child: const Text('Đăng nhập ngay', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          );
+        },
+      );
+      return; // Dừng hàm lại ở đây, không gọi API nữa
+    }
+
+    // 2. NẾU ĐÃ ĐĂNG NHẬP: HIỆN TRẠNG THÁI ĐANG XỬ LÝ
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('⏳ Đang xử lý...'), duration: Duration(milliseconds: 500)),
+      );
+    }
+
+    // 3. GỌI API BẰNG DIO (Truyền ID thật từ ví vào)
+    bool isSuccess = await _apiService.followTeam(
+        UserSession.mySqlUserId!,
+        apiTeamId,
+        teamName,
+        logoUrl
+    );
+
+    // 4. BÁO KẾT QUẢ RA MÀN HÌNH
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isSuccess ? '✅ Đã theo dõi đội bóng!' : '❌ Lỗi hệ thống hoặc đã theo dõi rồi!'),
+          backgroundColor: isSuccess ? Colors.green : Colors.orange,
+        ),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final homeScore = widget.match.homeScore?.display?.toString() ?? '-';
-    final awayScore = widget.match.awayScore?.display?.toString() ?? '-';
-
     return DefaultTabController(
-      length: 2, // Số lượng Tab
+      length: 2,
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: AppBar(
-          title: const Text(
-            'Chi tiết trận đấu',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-          ),
+          title: const Text('Chi tiết trận đấu', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           backgroundColor: const Color(0xFF3C1C5A),
           foregroundColor: Colors.white,
           elevation: 0,
         ),
         body: Column(
           children: [
-            // KHU VỰC HEADER TỈ SỐ Ở TRÊN CÙNG
-            Container(
-              color: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  // Đội nhà
-                  Column(
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl:
-                            'https://api.sofascore.app/api/v1/team/${widget.match.homeTeam.id}/image',
-                        width: 60,
-                        height: 60,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.match.homeTeam.shortName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  // Tỉ số
-                  Column(
-                    children: [
-                      Text(
-                        '$homeScore - $awayScore',
-                        style: const TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        widget.match.status.description,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Đội khách
-                  Column(
-                    children: [
-                      CachedNetworkImage(
-                        imageUrl:
-                            'https://api.sofascore.app/api/v1/team/${widget.match.awayTeam.id}/image',
-                        width: 60,
-                        height: 60,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        widget.match.awayTeam.shortName,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
+            // Gọi Header Widget và truyền hàm followTeam vào
+            MatchHeaderWidget(
+              match: widget.match,
+              onFollow: followTeam,
             ),
 
-            // THANH CHUYỂN TAB
+            // Thanh Tab
             Container(
               color: Colors.white,
               child: const TabBar(
@@ -140,159 +158,20 @@ class _MatchDetailScreenState extends State<MatchDetailScreen> {
               ),
             ),
 
-            // NỘI DUNG 2 TAB
+            // Nội dung Tab
             Expanded(
               child: isLoading
-                  ? const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF3C1C5A),
-                      ),
-                    )
+                  ? const Center(child: CircularProgressIndicator(color: Color(0xFF3C1C5A)))
                   : TabBarView(
-                      children: [
-                        _buildStatsTab(), // Hàm vẽ Tab 1
-                        _buildLineupsTab(), // Hàm vẽ Tab 2
-                      ],
-                    ),
+                children: [
+                  StatsTabWidget(stats: stats),
+                  LineupsTabWidget(lineups: lineups),
+                ],
+              ),
             ),
           ],
         ),
       ),
-    );
-  }
-
-  // GIAO DIỆN TAB THỐNG KÊ
-  Widget _buildStatsTab() {
-    if (stats.isEmpty)
-      return const Center(child: Text('Chưa có thống kê cho trận này.'));
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: stats.length,
-      itemBuilder: (context, index) {
-        final stat = stats[index];
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  stat.homeValue,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  stat.name,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.black54),
-                ),
-              ),
-              Expanded(
-                child: Text(
-                  stat.awayValue,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  // GIAO DIỆN TAB ĐỘI HÌNH
-  Widget _buildLineupsTab() {
-    if (lineups == null || lineups!.homePlayers.isEmpty)
-      return const Center(child: Text('Chưa có đội hình ra sân.'));
-
-    // Chia màn hình làm 2 cột
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Cột Đội Nhà
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(8),
-            itemCount: lineups!.homePlayers.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final player = lineups!.homePlayers[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blue[100],
-                  child: Text(
-                    player.jerseyNumber,
-                    style: const TextStyle(color: Colors.blue),
-                  ),
-                ),
-                title: Text(
-                  player.name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(player.position),
-                trailing: Text(
-                  player.rating > 0 ? player.rating.toString() : '-',
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                contentPadding: EdgeInsets.zero,
-              );
-            },
-          ),
-        ),
-        // Vạch kẻ giữa 2 đội
-        Container(width: 1, color: Colors.grey[300]),
-        // Cột Đội Khách
-        Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.all(8),
-            itemCount: lineups!.awayPlayers.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final player = lineups!.awayPlayers[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.red[100],
-                  child: Text(
-                    player.jerseyNumber,
-                    style: const TextStyle(color: Colors.red),
-                  ),
-                ),
-                title: Text(
-                  player.name,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(player.position),
-                trailing: Text(
-                  player.rating > 0 ? player.rating.toString() : '-',
-                  style: const TextStyle(
-                    color: Colors.green,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                contentPadding: EdgeInsets.zero,
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

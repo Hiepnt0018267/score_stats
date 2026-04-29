@@ -41,7 +41,7 @@ class MatchCard extends StatelessWidget {
                 child: Column(
                   children: [
                     CachedNetworkImage(
-                      imageUrl: 'https://api.sofascore.app/api/v1/team/${match.homeTeam.id}/image',
+                      imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${match.homeTeam.id}',
                       width: 45, height: 45,
                       placeholder: (context, url) => const SizedBox(width: 45, height: 45, child: CircularProgressIndicator(strokeWidth: 2)),
                       errorWidget: (context, url, error) => const Icon(Icons.shield, size: 45, color: Colors.grey),
@@ -74,7 +74,7 @@ class MatchCard extends StatelessWidget {
                 child: Column(
                   children: [
                     CachedNetworkImage(
-                      imageUrl: 'https://api.sofascore.app/api/v1/team/${match.awayTeam.id}/image',
+                      imageUrl: 'http://10.0.2.2:8080/api/sofascore/team-logo/${match.awayTeam.id}',
                       width: 45, height: 45,
                       placeholder: (context, url) => const SizedBox(width: 45, height: 45, child: CircularProgressIndicator(strokeWidth: 2)),
                       errorWidget: (context, url, error) => const Icon(Icons.shield, size: 45, color: Colors.grey),

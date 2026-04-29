@@ -1,3 +1,16 @@
+// THÊM ĐOẠN BUILDSCRIPT NÀY LÊN TRÊN CÙNG
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // Báo cho dự án biết có sự tồn tại của thư viện Google Services
+        classpath("com.google.gms:google-services:4.4.1")
+    }
+}
+
+// BÊN DƯỚI LÀ CODE CŨ CỦA BẠN (Giữ nguyên)
 allprojects {
     repositories {
         google()
